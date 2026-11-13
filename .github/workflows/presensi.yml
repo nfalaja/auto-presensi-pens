@@ -1,0 +1,45 @@
+name: PENS Auto Presensi Cloud
+
+on:
+  schedule:
+    # 08:00 - 17:00 WIB (UTC+7) setara dengan 01:00 - 10:00 UTC
+    # Berjalan setiap 15 menit pada hari Senin s/d Jumat
+    - cron: '*/15 1-10 * * 1-5'
+  workflow_dispatch: # Mengizinkan tombol manual "Run workflow" di GitHub
+
+jobs:
+  check-presensi:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Google Chrome
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget curl unzip libxi6 libgconf-2-4 libnss3
+          wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+          sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install selenium webdriver-manager requests
+
+      - name: Run Auto Presensi
+        env:
+          PENS_USERNAME: ${{ secrets.PENS_USERNAME }}
+          PENS_PASSWORD: ${{ secrets.PENS_PASSWORD }}
+          PENS_NETID: ${{ secrets.PENS_NETID }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python presensi_cloud.py

@@ -1,0 +1,6 @@
+venv/
+__pycache__/
+*.log
+*.png
+run_presensi.bat
+run_silently.vbs
