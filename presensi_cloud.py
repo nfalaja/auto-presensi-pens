@@ -408,4 +408,4 @@ def run_cloud_continuous(duration_minutes=9):
 
 
 if __name__ == "__main__":
-    run_cloud_continuous(duration_minutes=9)
+    run_cloud_continuous(duration_minutes=50)
