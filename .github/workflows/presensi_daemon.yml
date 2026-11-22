@@ -1,19 +1,19 @@
-name: 24/7 Continuous Cloud Runner (No-Card, Self-Looping)
+name: PENS Auto Presensi 24/7 Cloud Engine
 
 on:
   schedule:
-    # Trigger cadangan tiap jam jika loop terputus
+    # Trigger otomatis setiap jam sebagai fail-safe
     - cron: '0 * * * *'
   workflow_dispatch:
 
 concurrency:
-  group: pens-247-cloud-daemon
+  group: pens-cloud-engine
   cancel-in-progress: true
 
 jobs:
-  run-daemon:
+  run-engine:
     runs-on: ubuntu-latest
-    timeout-minutes: 360 # Maksimal limit GitHub 6 jam
+    timeout-minutes: 360
 
     steps:
       - name: Checkout Code
@@ -26,9 +26,10 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install requests selenium webdriver-manager
+          pip install --upgrade pip
+          pip install -r requirements.txt
 
-      - name: Run Cloud Daemon (Continuous 45-Minute Shift)
+      - name: Run Unified Engine (50-Minute Shift)
         env:
           PENS_USERNAME: ${{ secrets.PENS_USERNAME }}
           PENS_PASSWORD: ${{ secrets.PENS_PASSWORD }}
@@ -36,17 +37,15 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          # Jalankan runner selama 50 menit
-          python presensi_cloud.py
+          python main.py --duration 50
 
-      - name: Trigger Next Relay Shift (Estafet Otomatis)
+      - name: Auto-Relay to Next Shift (24/7 Estafet)
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Memicu estafet runner berikutnya agar bot dan presensi tetap aktif 24/7..."
           curl -X POST \
             -H "Authorization: token $GH_TOKEN" \
             -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/${{ github.repository }}/actions/workflows/continuous_daemon.yml/dispatches \
+            https://api.github.com/repos/${{ github.repository }}/actions/workflows/presensi_daemon.yml/dispatches \
             -d '{"ref":"main"}' || true

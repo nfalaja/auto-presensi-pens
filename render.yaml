@@ -1,8 +1,0 @@
-services:
-  - type: web
-    name: pens-auto-presensi
-    runtime: python
-    buildCommand: "pip install -r requirements.txt && apt-get update && apt-get install -y wget curl unzip libxi6 libgconf-2-4 libnss3 google-chrome-stable || true"
-    startCommand: "gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 4"
-    plan: free
-    autoDeploy: true
