@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
 PENS Auto Presensi Engine v2 (Gercep + Interactive Telegram Bot)
-- Mendukung Mode Otomatis & Manual
-- Fast API Polling tiap 30-60 detik (Real-time detection)
-- Inline button konfirmasi presensi via Telegram
+- Menggunakan Opera GX untuk eksekusi browser lokal
+- Fast API Polling tiap 30-45 detik
+- Interactive Telegram Bot (Auto vs Manual Mode)
 """
 
 import time
@@ -37,12 +37,12 @@ MATKUL_FILE      = os.path.join(BASE_DIR, "daftar_matkul.json")
 SETTINGS_FILE    = os.path.join(BASE_DIR, "settings.json")
 LOG_FILE         = os.path.join(BASE_DIR, "presensi.log")
 
-BRAVE_PATH       = r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe"
+# Lokasi Opera GX
+OPERA_GX_PATH    = os.path.expandvars(r"%LOCALAPPDATA%\Programs\Opera GX\opera.exe")
 # ------------------------------------------------------------------------------
 
-# Global session cache
 cached_cookies = {}
-notified_sessions = set()  # Hindari spam notifikasi berulang untuk sesi yang sama
+notified_sessions = set()
 
 
 def log(msg):
@@ -89,7 +89,7 @@ def send_telegram(text, reply_markup=None):
         try:
             r = requests.post(url, json=payload, timeout=15)
             return r.json()
-        except Exception as e:
+        except Exception:
             time.sleep(2)
     return None
 
@@ -120,8 +120,10 @@ def edit_message_text(message_id, text, reply_markup=None):
 
 def make_driver():
     options = Options()
-    if os.path.exists(BRAVE_PATH):
-        options.binary_location = BRAVE_PATH
+    if os.path.exists(OPERA_GX_PATH):
+        options.binary_location = OPERA_GX_PATH
+        log(f"Menggunakan browser: Opera GX ({OPERA_GX_PATH})")
+    
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
@@ -132,24 +134,23 @@ def make_driver():
     options.add_experimental_option("excludeSwitches", ["enable-logging", "enable-automation"])
 
     try:
-        service = Service(ChromeDriverManager(driver_version="157.0.8103.50").install())
+        service = Service(ChromeDriverManager(driver_version="155.0.8059.85").install())
     except Exception:
         service = Service(ChromeDriverManager().install())
+        
     driver = webdriver.Chrome(service=service, options=options)
     driver.implicitly_wait(5)
     return driver
 
 
 def get_fresh_session():
-    """Melakukan login dan mengembalikan cookies aktif"""
     global cached_cookies
-    log("Memperbarui sesi login CAS PENS...")
+    log("Memperbarui sesi login CAS PENS via Opera GX...")
     driver = make_driver()
     try:
         driver.get(LOGIN_URL)
         wait = WebDriverWait(driver, 20)
 
-        # 1. Klik tombol login
         try:
             masuk_btn = WebDriverWait(driver, 10).until(EC.element_to_be_clickable(
                 (By.XPATH, '//a[contains(text(),"Masuk") or contains(text(),"Login")]'
@@ -160,7 +161,6 @@ def get_fresh_session():
         except Exception:
             pass
 
-        # 2. Opsi SSO
         try:
             sso_btn = WebDriverWait(driver, 10).until(EC.element_to_be_clickable(
                 (By.XPATH, '//*[contains(text(),"Dosen / Staff / Mahasiswa") or contains(text(),"SSO PENS")]'
@@ -172,7 +172,6 @@ def get_fresh_session():
         except Exception:
             pass
 
-        # 3. Form CAS
         netid_field = WebDriverWait(driver, 20).until(EC.presence_of_element_located(
             (By.CSS_SELECTOR, 'input[name="username"], input[id="username"], '
                               'input[name="netid"], input[id="netid"], '
@@ -207,11 +206,9 @@ def get_fresh_session():
 
 
 def eksekusi_presensi(url_matkul, nama_matkul):
-    """Membuka halaman matkul via browser dan mengklik tombol presensi"""
     log(f"Mengeksekusi presensi untuk: {nama_matkul} ({url_matkul})...")
     driver = make_driver()
     try:
-        # Inject cookies jika ada
         driver.get(BASE_URL)
         for k, v in cached_cookies.items():
             driver.add_cookie({"name": k, "value": v, "domain": "ethol.pens.ac.id"})
@@ -219,7 +216,6 @@ def eksekusi_presensi(url_matkul, nama_matkul):
         driver.get(url_matkul)
         time.sleep(3)
 
-        # Cari tombol presensi
         buttons = driver.find_elements(By.XPATH, "//button[contains(normalize-space(), 'Presensi') and not(contains(., 'Aturan'))]")
         if not buttons:
             log("Tombol presensi tidak ditemukan.")
@@ -237,7 +233,6 @@ def eksekusi_presensi(url_matkul, nama_matkul):
         btn.click()
         time.sleep(3)
 
-        # Konfirmasi dialog jika ada
         try:
             dialog_btns = driver.find_elements(By.CSS_SELECTOR, ".swal2-confirm, .btn-primary, button[type='submit']")
             for c_btn in dialog_btns:
@@ -260,7 +255,6 @@ def eksekusi_presensi(url_matkul, nama_matkul):
 
 
 def check_all_matkul_fast():
-    """Pemeriksaan cepat 12 matkul via API dalam 1-2 detik"""
     global cached_cookies
     if not cached_cookies or 'token' not in cached_cookies:
         if not get_fresh_session():
@@ -281,20 +275,17 @@ def check_all_matkul_fast():
     for item in matkul_list:
         url = item["url"]
         title = item["title"]
-        # Ambil ID kuliah dari URL
         kuliah_id = url.rstrip("/").split("/")[-1]
 
         api_url = f"{BASE_URL}/api/presensi/aktif-kuliah?kuliah={kuliah_id}&jenis_schema=4"
         try:
             r = s.get(api_url, timeout=5)
-            if r.status_code == 401 or r.status_code == 403:
-                # Token kadaluarsa, refresh session
+            if r.status_code in [401, 403]:
                 log("Token expired, refreshing session...")
                 get_fresh_session()
                 return []
             
             data = r.json()
-            # Jika ada presensi aktif, data berupa list yang tidak kosong
             if isinstance(data, list) and len(data) > 0:
                 session_id = data[0].get("nomor", str(kuliah_id))
                 opened_courses.append({
@@ -311,16 +302,12 @@ def check_all_matkul_fast():
 
 
 def monitor_loop():
-    """Loop background yang mengecek presensi tiap 30-45 detik di jam kuliah"""
     log("Monitor presensi background dimulai...")
-    
-    # Inisialisasi sesi pertama
     get_fresh_session()
 
     while True:
         try:
             now = datetime.datetime.now()
-            # Cek jam perkuliahan: 07:45 sampai 17:30
             is_kuliah_hours = (7 <= now.hour <= 17)
             
             if is_kuliah_hours:
@@ -349,7 +336,6 @@ def monitor_loop():
                             else:
                                 send_telegram(f"⚠️ Gagal melakukan presensi otomatis untuk <b>{nama}</b>. Silakan cek manual: {url}")
                         else:
-                            # MODE MANUAL
                             log(f"Presensi terbuka di {nama}! Mode MANUAL: mengirim konfirmasi ke Telegram.")
                             keyboard = {
                                 "inline_keyboard": [
@@ -367,7 +353,6 @@ def monitor_loop():
                                 reply_markup=keyboard
                             )
 
-            # Polling tiap 30 detik agar super GERCEP
             time.sleep(30)
         except Exception as e:
             log(f"Error di monitor_loop: {e}")
@@ -375,7 +360,6 @@ def monitor_loop():
 
 
 def handle_telegram_updates():
-    """Mendengarkan tombol klik dan perintah dari Telegram"""
     last_update_id = 0
     log("Telegram listener dimulai...")
 
@@ -390,7 +374,6 @@ def handle_telegram_updates():
                 for update in data.get("result", []):
                     last_update_id = update["update_id"]
                     
-                    # 1. Handle Pesan Teks (/mode, /start, /status)
                     if "message" in update and "text" in update["message"]:
                         text = update["message"]["text"].strip()
                         chat_id = str(update["message"]["chat"]["id"])
@@ -403,6 +386,7 @@ def handle_telegram_updates():
                                 current_mode = get_settings().get("mode", "auto").upper()
                                 send_telegram(
                                     f"📊 <b>STATUS AUTO PRESENSI PENS</b>\n\n"
+                                    f"• Browser: <b>Opera GX</b> 🎮\n"
                                     f"• Mode: <b>{'🤖 OTOMATIS' if current_mode == 'AUTO' else '✋ MANUAL'}</b>\n"
                                     f"• Kecepatan cek: <b>Tiap 30 detik (Gercep API)</b>\n"
                                     f"• Jam operasional: <b>08:00 - 17:00 WIB</b>\n"
@@ -410,14 +394,12 @@ def handle_telegram_updates():
                                     f"Ketik /mode untuk mengubah mode."
                                 )
 
-                    # 2. Handle Tombol Inline Callback
                     if "callback_query" in update:
                         cq = update["callback_query"]
                         cq_id = cq["id"]
                         data_str = cq["data"]
                         msg_id = cq["message"]["message_id"]
 
-                        # Ganti Mode ke Auto
                         if data_str == "set_mode_auto":
                             settings = get_settings()
                             settings["mode"] = "auto"
@@ -430,7 +412,6 @@ def handle_telegram_updates():
                                 "Ketik /mode kapan saja jika ingin mengubah ke Manual."
                             )
 
-                        # Ganti Mode ke Manual
                         elif data_str == "set_mode_manual":
                             settings = get_settings()
                             settings["mode"] = "manual"
@@ -445,7 +426,6 @@ def handle_telegram_updates():
                                 "Ketik /mode kapan saja jika ingin mengubah ke Otomatis."
                             )
 
-                        # Cek status sekarang
                         elif data_str == "check_now":
                             answer_callback_query(cq_id, "Sedang memeriksa seluruh matkul...")
                             opened = check_all_matkul_fast()
@@ -455,12 +435,10 @@ def handle_telegram_updates():
                             else:
                                 send_telegram("ℹ️ Semua mata kuliah saat ini masih belum membuka presensi.")
 
-                        # Konfirmasi Absen Manual
                         elif data_str.startswith("absen_"):
                             kuliah_id = data_str.split("_")[1]
                             answer_callback_query(cq_id, "Memproses presensi...")
                             
-                            # Cari nama matkul
                             with open(MATKUL_FILE, "r", encoding="utf-8") as f:
                                 matkul_list = json.load(f)
                             target = next((m for m in matkul_list if kuliah_id in m["url"]), None)
@@ -482,21 +460,18 @@ def handle_telegram_updates():
                                         f"Silakan coba presensi manual di browser: {target['url']}"
                                     )
 
-                        # Lewati Absen Manual
                         elif data_str.startswith("ignore_"):
                             answer_callback_query(cq_id, "Presensi dilewati.")
                             edit_message_text(msg_id, "❌ Presensi untuk sesi ini dilewati.")
 
-        except Exception as e:
+        except Exception:
             time.sleep(3)
 
 
 if __name__ == "__main__":
-    log("Menjalankan PENS Auto Presensi Engine v2...")
+    log("Menjalankan PENS Auto Presensi Engine v2 (Opera GX)...")
     
-    # Jalankan monitor di thread terpisah
     t_monitor = threading.Thread(target=monitor_loop, daemon=True)
     t_monitor.start()
 
-    # Jalankan Telegram listener di thread utama
     handle_telegram_updates()

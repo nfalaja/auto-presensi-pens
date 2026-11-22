@@ -35,7 +35,7 @@ BASE_DIR         = os.path.dirname(os.path.abspath(__file__))
 LOG_FILE         = os.path.join(BASE_DIR, "presensi.log")
 MATKUL_FILE      = os.path.join(BASE_DIR, "daftar_matkul.json")
 STATE_FILE       = os.path.join(BASE_DIR, "presensi_state.json")
-BRAVE_PATH       = r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe"
+OPERA_GX_PATH    = os.path.expandvars(r"%LOCALAPPDATA%\Programs\Opera GX\opera.exe")
 # ------------------------------------------------------------------------------
 
 
@@ -70,7 +70,9 @@ def send_telegram(msg):
 
 def make_driver():
     options = Options()
-    options.binary_location = BRAVE_PATH
+    if os.path.exists(OPERA_GX_PATH):
+        options.binary_location = OPERA_GX_PATH
+        log(f"Menggunakan browser: Opera GX ({OPERA_GX_PATH})")
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
@@ -80,7 +82,10 @@ def make_driver():
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_experimental_option("excludeSwitches", ["enable-logging", "enable-automation"])
 
-    service = Service(ChromeDriverManager(driver_version="157.0.8103.50").install())
+    try:
+        service = Service(ChromeDriverManager(driver_version="155.0.8059.85").install())
+    except Exception:
+        service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=options)
     driver.implicitly_wait(5)
     return driver
