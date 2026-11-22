@@ -1,11 +1,16 @@
-name: PENS Auto Presensi Cloud
+name: PENS Auto Presensi Cloud (Gercep & Real-time)
 
 on:
   schedule:
     # 08:00 - 17:00 WIB (UTC+7) setara dengan 01:00 - 10:00 UTC
-    # Berjalan setiap 15 menit pada hari Senin s/d Jumat
-    - cron: '*/15 1-10 * * 1-5'
+    # Berjalan setiap 10 menit pada hari Senin s/d Jumat
+    - cron: '*/10 1-10 * * 1-5'
   workflow_dispatch: # Mengizinkan tombol manual "Run workflow" di GitHub
+
+# Pastikan tidak ada 2 runner yang bentrok di waktu bersamaan
+concurrency:
+  group: pens-presensi-group
+  cancel-in-progress: false
 
 jobs:
   check-presensi:
@@ -25,7 +30,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install selenium webdriver-manager requests
 
-      - name: Run Auto Presensi
+      - name: Run Auto Presensi (Continuous Monitoring)
         env:
           PENS_USERNAME: ${{ secrets.PENS_USERNAME }}
           PENS_PASSWORD: ${{ secrets.PENS_PASSWORD }}
